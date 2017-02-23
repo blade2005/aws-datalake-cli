@@ -12,6 +12,7 @@ import datetime
 import base64
 import hashlib
 import hmac
+import pprint
 
 def parse_opts():
     """Parse CLI options"""
@@ -127,8 +128,8 @@ def get_auth(endpoint_host, access_key, secret_access_key):
     return base64.b64encode(_apiKey)
 
 class DataLake(object):
-    def __init__(endpoint_host, access_key, secret_access_key):
-        api_key = get_auth(endpoint_host, access_key. secret_access_key)
+    def __init__(self, endpoint_host, access_key, secret_access_key):
+        api_key = get_auth(endpoint_host, access_key, secret_access_key)
         self.datalake = hammock.Hammock(endpoint_host, headers={'Auth': 'ak:{0}'.format(api_key)})
 
     def add_cart_item(self, args):
@@ -193,7 +194,6 @@ def main():
     args = parse_opts()
     dir(args)
     config = get_config()
-    print(config)
     datalake = DataLake(**config)
     funcs = {
         'add-cart-item': datalake.add_cart_item,
@@ -217,7 +217,11 @@ def main():
     }
     resp = funcs[args.parser](args)
     pp = pprint.PrettyPrinter(indent=4)
-    pp.pprint(resp)
+    if resp:
+        pp.pprint(resp.json())
+    else:
+        print('Response was: {0}'.format(resp.status_code))
+        pp.pprint(resp.json())
 
 if __name__ == "__main__":
     main()
