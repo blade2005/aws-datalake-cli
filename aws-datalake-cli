@@ -1,106 +1,84 @@
 #!/usr/bin/env python2.7
-try:
-    import ConfigParser as configparser
-except ImportError:
-    import configparser
-
+from __future__ import print_function
+import functools
 import os
-import hammock
 import logging
 import argparse
 import datetime
 import base64
 import hashlib
 import hmac
+import json
 import pprint
+try:
+    import ConfigParser as configparser
+except ImportError:
+    import configparser
+import hammock
+
+def __add_subparser(subparsers, sub_command, cmd_help, required_args=[]):
+    subsubparser = subparsers.add_parser(
+        sub_command, help=cmd_help)
+    for arg in required_args:
+        subsubparser.add_argument(arg, required=True)
+    subsubparser.set_defaults(parser=sub_command)
+    return subsubparser
 
 def parse_opts():
     """Parse CLI options"""
     parser = argparse.ArgumentParser(description='AWS Datalake CLI')
-    parser.add_argument('-c', '--configfile', action='store', help='Configfile', default=os.path.expanduser('~/.aws/datalake.cfg'))
+    parser.add_argument('-c', '--configfile', action='store', help='Configfile',
+                        default=os.path.expanduser('~/.aws/datalake.cfg'))
 
-    subparsers = parser.add_subparsers(help='Usage: aws-datalake-cli add-cart-item -h')
+    subparsers = parser.add_subparsers(
+        help='Usage: aws-datalake-cli add-cart-item -h')
 
-    add_cart_item_parser = subparsers.add_parser('add-cart-item', help="adds a package to the user's cart")
-    add_cart_item_parser.add_argument('--package-id', required=True)
-    add_cart_item_parser.set_defaults(parser='add-cart-item')
+    _add_subparser = functools.partial(__add_subparser, subparsers)
+    _add_subparser('add-cart-item', "adds a package to the user's cart",
+                   ['--package-id'])
+    co_ca_p = _add_subparser(
+        'checkout-cart',
+        "checks out a user's cart to generate manifest files for pending cart items",
+        ['--package-id'])
 
-    checkout_cart_parser = subparsers.add_parser('checkout-cart', help="checks out a user's cart to generate manifest files for pending cart items")
-    checkout_cart_parser.add_argument('--package-id', required=True)
-    checkout_cart_parser.add_argument('--format', required=True, choices=['bucket-key', 'signed-url'])
-    checkout_cart_parser.set_defaults(parser='checkout-cart')
+    co_ca_p.add_argument('--format', required=True, choices=['bucket-key',
+                                                             'signed-url'])
 
-    describe_cart_parser = subparsers.add_parser('describe-cart', help="describes a user's cart")
-    describe_cart_parser.set_defaults(parser='describe-cart')
-
-    create_package_metadata_parser = subparsers.add_parser('create-package-metadata', help="creates a new data lake package")
-    create_package_metadata_parser.add_argument('--package-id', required=True)
-    create_package_metadata_parser.add_argument('--metadata', required=True)
-    create_package_metadata_parser.set_defaults(parser='create-package-metadata')
-
-    create_package_parser = subparsers.add_parser('create-package', help="creates a new data lake package")
-    create_package_parser.add_argument('--metadata', required=True)
-    create_package_parser.add_argument('--package-description', required=True)
-    create_package_parser.add_argument('--package-name', required=True)
-    create_package_parser.set_defaults(parser='create-package')
-
-    describe_cart_item_parser = subparsers.add_parser('describe-cart-item', help="describes a item in the user's cart")
-    describe_cart_item_parser.add_argument('--cart-item-id', required=True)
-    describe_cart_item_parser.set_defaults(parser='describe-cart-item')
-
-    describe_package_metadata_parser = subparsers.add_parser('describe-package-metadata', help="describes the metadata associated with a package")
-    describe_package_metadata_parser.add_argument('--package-id', required=True)
-    describe_package_metadata_parser.set_defaults(parser='describe-package-metadata')
-
-    describe_package_dataset_parser = subparsers.add_parser('describe-package-dataset', help="describes a dataset associated to a package")
-    describe_package_dataset_parser.add_argument('--package-id', required=True)
-    describe_package_dataset_parser.add_argument('--dataset-id', required=True)
-    describe_package_dataset_parser.set_defaults(parser='describe-package-dataset')
-
-    describe_package_datasets_parser = subparsers.add_parser('describe-package-datasets', help="describes the datasets associated with a package")
-    describe_package_datasets_parser.add_argument('--package-id', required=True)
-    describe_package_datasets_parser.set_defaults(parser='describe-package-datasets')
-
-    describe_package_parser = subparsers.add_parser('describe-package', help="describes the details of a package")
-    describe_package_parser.add_argument('--package-id', required=True)
-    describe_package_parser.set_defaults(parser='describe-package')
-
-    describe_required_metadata_parser = subparsers.add_parser('describe-required-metadata', help="list the required metadata for packages")
-    describe_required_metadata_parser.set_defaults(parser='describe-required-metadata')
-
-    import_package_manifest_parser = subparsers.add_parser('import-package-manifest', help="uploads a new import manifest file for a package")
-    import_package_manifest_parser.add_argument('--package-id', required=True)
-    import_package_manifest_parser.add_argument('--file', required=True)
-    import_package_manifest_parser.set_defaults(parser='import-package-manifest')
-
-    remove_cart_item_parser = subparsers.add_parser('remove-cart-item', help="removes a package from the user's cart")
-    remove_cart_item_parser.add_argument('--cart-item-id', required=True)
-    remove_cart_item_parser.set_defaults(parser='remove-cart-item')
-
-    remove_package_dataset_parser = subparsers.add_parser('remove-package-dataset', help="removes a dataset from a package")
-    remove_package_dataset_parser.add_argument('--package-id', required=True)
-    remove_package_dataset_parser.add_argument('--dataset-id', required=True)
-    remove_package_dataset_parser.set_defaults(parser='remove-package-dataset')
-
-    remove_package_parser = subparsers.add_parser('remove-package', help="removes a package from the data lake")
-    remove_package_parser.add_argument('--package-id', required=True)
-    remove_package_parser.set_defaults(parser='remove-package')
-
-    search_parser = subparsers.add_parser('search', help="search data lake")
-    search_parser.add_argument('--terms', required=True)
-    search_parser.set_defaults(parser='search')
-
-    update_package_parser = subparsers.add_parser('update-package', help="overwrites the details for a package")
-    update_package_parser.add_argument('--package-id', required=True)
-    update_package_parser.add_argument('--package-name', required=True)
-    update_package_parser.add_argument('--package-description', required=True)
-    update_package_parser.set_defaults(parser='update-package')
-
-    upload_package_dataset_parser = subparsers.add_parser('upload-package-dataset', help="uploads a new dataset file for a package")
-    upload_package_dataset_parser.add_argument('--package-id', required=True)
-    upload_package_dataset_parser.add_argument('--file', required=True)
-    upload_package_dataset_parser.add_argument('--content-type', required=True)
-    upload_package_dataset_parser.set_defaults(parser='upload-package-dataset')
+    _add_subparser('describe-cart', "describes a user's cart")
+    _add_subparser('create-package-metadata', "creates a new data lake package",
+                   ['--package-id', '--metadata'])
+    _add_subparser('create-package', "creates a new data lake package",
+                   ['--metadata', '--package-description', '--package-name'])
+    _add_subparser('describe-cart-item', "describes a item in the user's cart",
+                   ['--cart-item-id'])
+    _add_subparser('describe-package-metadata',
+                   "describes the metadata associated with a package",
+                   ['--package-id'])
+    _add_subparser('describe-package-dataset',
+                   "describes a dataset associated to a package",
+                   ['--package-id', '--dataset-id'])
+    _add_subparser('describe-package-datasets',
+                   "describes the datasets associated with a package",
+                   ['--package-id'])
+    _add_subparser('describe-package', "describes the details of a package",
+                   ['--package-id'])
+    _add_subparser('describe-required-metadata',
+                   "list the required metadata for packages")
+    _add_subparser('import-package-manifest',
+                   "uploads a new import manifest file for a package",
+                   ['--package-id', '--file'])
+    _add_subparser('remove-cart-item', "removes a package from the user's cart",
+                   ['--cart-item-id'])
+    _add_subparser('remove-package-dataset', "removes a dataset from a package",
+                   ['--package-id', '--dataset-id'])
+    _add_subparser('remove-package', "removes a package from the data lake",
+                   ['--package-id'])
+    _add_subparser('search', "search data lake", ['--terms'])
+    _add_subparser('update-package', "overwrites the details for a package",
+                   ['--package-id', '--package-name', '--package-description'])
+    _add_subparser('upload-package-dataset',
+                   "uploads a new dataset file for a package",
+                   ['--package-id', '--file', '--content-type'])
 
     return parser.parse_args()
 
@@ -114,21 +92,24 @@ def get_config(config_path=os.path.expanduser('~/.aws/datalake.cfg')):
     if config.has_section(section):
         return dict(config.items(section))
 
+
 def get_auth(endpoint_host, access_key, secret_access_key):
-    kDate = hmac.new(key='DATALAKE4'+ secret_access_key,
-                     msg=datetime.date.today().strftime('%Y%m%d'),
+    ak_date = hmac.new(key='DATALAKE4' + secret_access_key,
+                       msg=datetime.date.today().strftime('%Y%m%d'),
+                       digestmod=hashlib.sha256)
+    ak_ep = hmac.new(base64.b64encode(ak_date.digest()), msg=endpoint_host,
                      digestmod=hashlib.sha256)
-    kEndpoint = hmac.new(base64.b64encode(kDate.digest()), msg=endpoint_host,
-                         digestmod=hashlib.sha256)
-    kService = hmac.new(base64.b64encode(kEndpoint.digest()), msg='datalake',
-                        digestmod=hashlib.sha256)
-    kSigning = hmac.new(base64.b64encode(kService.digest()),
-                        msg="datalake4_request", digestmod=hashlib.sha256)
-    _signature = base64.b64encode(kSigning.digest())
-    _apiKey = '{0}:{1}'.format(access_key, _signature)
-    return base64.b64encode(_apiKey)
+    ak_service = hmac.new(base64.b64encode(ak_ep.digest()), msg='datalake',
+                          digestmod=hashlib.sha256)
+    ak_signing = hmac.new(base64.b64encode(ak_service.digest()),
+                          msg="datalake4_request", digestmod=hashlib.sha256)
+    _signature = base64.b64encode(ak_signing.digest())
+    api_key = '{0}:{1}'.format(access_key, _signature)
+    return base64.b64encode(api_key)
+
 
 class DataLake(object):
+
     def __init__(self, endpoint_host, access_key, secret_access_key):
         api_key = get_auth(endpoint_host.replace('https://', ''),
                            access_key, secret_access_key)
@@ -141,7 +122,7 @@ class DataLake(object):
     def checkout_cart(self, args):
         return self.datalake.prod.cart.POST(data=json.dumps({'operation': 'checkout', 'format': args.format}))
 
-    def describe_cart(self, args):
+    def describe_cart(self, _):
         return self.datalake.prod.cart.GET()
 
     def create_package_metadata(self, args):
@@ -165,13 +146,14 @@ class DataLake(object):
     def describe_package(self, args):
         return self.datalake.prod.packages(args.package_id).GET()
 
-    def describe_required_metadata(self, args):
+    def describe_required_metadata(self, _):
         return self.datalake.prod.packages.POST(data=json.dumps({'operation': 'required_metadata'}))
 
     def import_package_manifest(self, args):
         return self.datalake.prod.packages(args.package_id).datasets.new.POST(
-            data=json.dumps({'name': os.basename(args.file), 'type': 'manifest', 'content_type': 'application/json'}),
-            files={'upload_file': open(args.file,'rb')})
+            data=json.dumps({'name': os.path.basename(
+                args.file), 'type': 'manifest', 'content_type': 'application/json'}),
+            files={'upload_file': open(args.file, 'rb')})
 
     def remove_cart_item(self, args):
         return self.datalake.prod.cart(args.cart_item_id).DELETE()
@@ -190,10 +172,13 @@ class DataLake(object):
 
     def upload_package_dataset(self, args):
         return self.datalake.prod.packages(args.package_id).datasets.new.POST(
-            data=json.dumps({'name': os.basename(args.file), 'type': 'dataset', 'content_type': args.content_type}),
-            files={'upload_file': open(args.file,'rb')})
+            data=json.dumps({'name': os.path.basename(
+                args.file), 'type': 'dataset', 'content_type': args.content_type}),
+            files={'upload_file': open(args.file, 'rb')})
+
 
 def main():
+    """Main."""
     args = parse_opts()
     dir(args)
     config = get_config()
@@ -219,12 +204,12 @@ def main():
         'upload-package-dataset': datalake.upload_package_dataset,
     }
     resp = funcs[args.parser](args)
-    pp = pprint.PrettyPrinter(indent=4)
+    pp_ = pprint.PrettyPrinter(indent=4)
     if resp:
-        pp.pprint(resp.json())
+        pp_.pprint(resp.json())
     else:
         print('Response was: {0}'.format(resp.status_code))
-        pp.pprint(resp.json())
+        pp_.pprint(resp.json())
 
 if __name__ == "__main__":
     main()
